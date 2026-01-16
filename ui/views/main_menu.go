@@ -13,12 +13,10 @@ type MainMenuView struct {
 
 func NewMainMenuView() MainMenuView {
 	items := []components.MenuItem{
-		{ID: "export", Title: "Quick Export", Description: "Create a single portable backup file", Icon: "📦"},
-		{ID: "backup", Title: "Full Backup", Description: "Create a detailed backup to folder", Icon: "💾"},
-		{ID: "restore", Title: "Restore System", Description: "Restore from a backup", Icon: "🔄"},
-		{ID: "import", Title: "Import Backup", Description: "Import from a portable backup file", Icon: "📥"},
+		{ID: "save", Title: "Quick Save", Description: "Save your system to a single file", Icon: "⚡"},
+		{ID: "load", Title: "Load Backup", Description: "Restore from a backup file", Icon: "📥"},
 		{ID: "about", Title: "About", Description: "About ReGo", Icon: "ℹ️"},
-		{ID: "quit", Title: "Quit", Description: "Exit the application", Icon: "🚪"},
+		{ID: "quit", Title: "Quit", Description: "Exit", Icon: "🚪"},
 	}
 	return MainMenuView{
 		menu:   components.NewMenu(items),
@@ -48,7 +46,6 @@ func (m MainMenuView) Update(msg tea.Msg) (MainMenuView, tea.Cmd, string) {
 func (m MainMenuView) View() string {
 	s := styles.RenderLogo() + "\n"
 	s += styles.RenderTagline() + "\n\n"
-	s += styles.TitleStyle.Render("Main Menu") + "\n\n"
 	s += m.menu.View() + "\n"
 	s += m.footer.View()
 	return s

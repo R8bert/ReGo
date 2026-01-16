@@ -1,4 +1,4 @@
-# ReGo 🔄
+# ReGo ⚡
 
 <p align="center">
   <img src="https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go" alt="Go Version">
@@ -6,163 +6,78 @@
   <img src="https://img.shields.io/badge/Platform-Linux-orange" alt="Platform">
 </p>
 
-A beautiful TUI application that helps you seamlessly backup and restore your Linux system configuration during reinstallation.
+**Super simple Linux backup** - Save your entire system configuration to a single tiny file.
 
-![ReGo Screenshot](docs/screenshot.png)
-
-## ✨ Features
-
-- **📦 Flatpak Backup** - Backup all Flatpak applications and remotes
-- **📦 RPM Packages** - Backup user-installed RPM packages (DNF)
-- **📁 Repositories** - Backup third-party DNF/YUM repositories
-- **🧩 GNOME Extensions** - Backup extensions and their settings
-- **⚙️ GNOME Settings** - Full dconf database backup
-- **📄 Dotfiles** - Shell configs, git settings, SSH config, and more
-- **🔤 User Fonts** - Backup custom fonts from ~/.local/share/fonts
-- **🔒 Dry-Run Mode** - Preview changes before restoring
-- **📋 Selective Restore** - Choose exactly what to restore
-
-## 🚀 Installation
-
-### From Source
+## ⚡ Quick Start
 
 ```bash
-# Clone the repository
-git clone https://github.com/r8bert/rego.git
-cd rego
-
 # Build
 go build -o rego .
 
 # Run
 ./rego
+
+# Select "Quick Save" → Done!
 ```
 
-### Requirements
+Your backup is saved to: `~/rego-hostname.json` (usually just a few KB!)
 
-- Go 1.21 or later
-- Linux with GNOME (for GNOME-specific features)
-- `flatpak` (for Flatpak backup)
-- `dnf` (for RPM/repo backup)
-- `dconf` (for GNOME settings backup)
+## 📦 What Gets Saved
 
-## 📖 Usage
+| Component | Saved As |
+|-----------|----------|
+| Flatpak apps | List of app IDs |
+| RPM packages | List of package names |
+| GNOME extensions | List of extension UUIDs |
+| GNOME settings | dconf database dump |
+| Repositories | List of third-party repos |
 
-### Running ReGo
+**No files are copied** - just the data needed to reinstall everything.
 
-```bash
-./rego
-```
+## 🔄 Workflow
 
-### 🚀 Quick Export (Recommended)
+### Before Reinstalling
 
-The easiest way to backup your system - creates a **single portable file**:
+1. Run `./rego`
+2. Press Enter on "Quick Save"
+3. Copy `~/rego-hostname.json` to USB/cloud/email
 
-1. Select **Quick Export** from the main menu
-2. Choose what to include (all selected by default)
-3. Press `Enter` - done!
+### After Fresh Install
 
-Your backup is saved as: `~/rego-backup-[hostname]-[date].tar.gz`
+1. Copy `rego-hostname.json` to new system
+2. Build and run `./rego`
+3. Select "Load Backup"
+4. Choose what to restore
 
-**Copy this single file to:**
-- USB drive
-- Cloud storage (Google Drive, Dropbox, etc.)
-- Email it to yourself
-
-### Keyboard Navigation
+## 🎹 Controls
 
 | Key | Action |
 |-----|--------|
-| `↑/↓` or `j/k` | Navigate up/down |
-| `Enter` | Select/confirm |
-| `Space` | Toggle checkbox |
-| `a` | Select/deselect all |
-| `d` | Toggle dry-run mode |
-| `Esc` | Go back |
+| `↑/↓` | Navigate |
+| `Enter` | Select |
+| `d` | Toggle dry-run |
+| `Esc` | Back |
 | `q` | Quit |
 
-### Restoring from Backup
+## 📄 Example Backup File
 
-1. Copy your `rego-backup-*.tar.gz` file to the new system
-2. Run `./rego`
-3. Select **Restore System**
-4. Choose your backup and components to restore
-5. Use **dry-run mode** first (press `d`) to preview changes
-
-> ⚠️ **Tip**: Always use dry-run mode first to see what will be changed!
-
-## 📁 Project Structure
-
-```
-rego/
-├── main.go                 # Application entry point
-├── internal/
-│   ├── backup/             # Backup modules
-│   │   ├── flatpak.go      # Flatpak apps & remotes
-│   │   ├── rpm.go          # RPM packages
-│   │   ├── repos.go        # DNF repositories
-│   │   ├── gnome_extensions.go
-│   │   ├── gnome_settings.go
-│   │   ├── dotfiles.go
-│   │   ├── fonts.go
-│   │   └── manager.go      # Backup orchestrator
-│   ├── restore/            # Restore modules (mirrors backup)
-│   └── utils/              # Shared utilities
-├── ui/
-│   ├── app.go              # Main TUI model
-│   ├── styles/             # Lip Gloss styling
-│   ├── components/         # Reusable UI components
-│   └── views/              # Screen views
-└── profiles/               # Saved backup profiles
-```
-
-## 🔧 Backup Data
-
-Each backup creates a directory with:
-
-| File | Contents |
-|------|----------|
-| `manifest.json` | Backup metadata and summary |
-| `flatpak.json` | Installed Flatpak apps and remotes |
-| `rpm_packages.json` | User-installed RPM packages |
-| `repos.json` + `repos.d/` | Third-party repository files |
-| `gnome_extensions.json` | Extension list and settings |
-| `gnome_settings.dconf` | Full dconf database dump |
-| `dotfiles/` | Copied dotfiles preserving structure |
-| `fonts/` | User fonts directory copy |
-
-## 🎨 Customization
-
-### Default Dotfiles
-
-Edit `internal/backup/types.go` to customize which dotfiles are backed up:
-
-```go
-func DefaultDotfiles() []string {
-    return []string{
-        ".bashrc",
-        ".zshrc",
-        ".gitconfig",
-        // Add your own...
-    }
+```json
+{
+  "version": "1.0",
+  "hostname": "my-laptop",
+  "flatpaks": ["org.mozilla.firefox", "com.spotify.Client"],
+  "rpm_packages": ["vim", "htop", "nodejs"],
+  "gnome_extensions": ["dash-to-dock@micxgx.gmail.com"],
+  "dconf_settings": "[org/gnome/desktop/interface]\ncolor-scheme='prefer-dark'"
 }
 ```
 
-## 🤝 Contributing
+## 📋 Requirements
 
-Contributions are welcome! Feel free to:
-
-- Report bugs
-- Suggest features
-- Submit pull requests
+- Go 1.21+
+- Linux with GNOME (optional - for GNOME features)
+- `flatpak`, `dnf`, `dconf` (optional - only used if available)
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
-## 🙏 Acknowledgments
-
-Built with:
-- [Bubble Tea](https://github.com/charmbracelet/bubbletea) - TUI framework
-- [Lip Gloss](https://github.com/charmbracelet/lipgloss) - Styling
-- [Bubbles](https://github.com/charmbracelet/bubbles) - TUI components
+MIT
