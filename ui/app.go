@@ -9,20 +9,20 @@ type View int
 
 const (
 	ViewMainMenu View = iota
+	ViewExport
 	ViewBackup
 	ViewRestore
-	ViewProfiles
-	ViewSettings
+	ViewImport
 	ViewAbout
 )
 
 type Model struct {
 	currentView View
 	mainMenu    views.MainMenuView
+	export      views.ExportView
 	backup      views.BackupView
 	restore     views.RestoreView
-	profiles    views.ProfilesView
-	settings    views.SettingsView
+	importView  views.ImportView
 	about       views.AboutView
 	width       int
 	height      int
@@ -33,8 +33,6 @@ func NewModel() Model {
 		currentView: ViewMainMenu,
 		mainMenu:    views.NewMainMenuView(),
 		about:       views.NewAboutView(),
-		settings:    views.NewSettingsView(),
-		profiles:    views.NewProfilesView(),
 	}
 }
 
@@ -58,20 +56,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ViewMainMenu:
 		m.mainMenu, cmd, nav = m.mainMenu.Update(msg)
 		switch nav {
+		case "export":
+			m.export = views.NewExportView()
+			m.currentView = ViewExport
 		case "backup":
 			m.backup = views.NewBackupView()
 			m.currentView = ViewBackup
 		case "restore":
 			m.restore = views.NewRestoreView()
 			m.currentView = ViewRestore
-		case "profiles":
-			m.currentView = ViewProfiles
-		case "settings":
-			m.currentView = ViewSettings
+		case "import":
+			m.importView = views.NewImportView()
+			m.currentView = ViewImport
 		case "about":
 			m.currentView = ViewAbout
 		case "quit":
 			return m, tea.Quit
+		}
+	case ViewExport:
+		m.export, cmd, nav = m.export.Update(msg)
+		if nav == "back" {
+			m.currentView = ViewMainMenu
 		}
 	case ViewBackup:
 		m.backup, cmd, nav = m.backup.Update(msg)
@@ -83,13 +88,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if nav == "back" {
 			m.currentView = ViewMainMenu
 		}
-	case ViewProfiles:
-		m.profiles, cmd, nav = m.profiles.Update(msg)
-		if nav == "back" {
-			m.currentView = ViewMainMenu
-		}
-	case ViewSettings:
-		m.settings, cmd, nav = m.settings.Update(msg)
+	case ViewImport:
+		m.importView, cmd, nav = m.importView.Update(msg)
 		if nav == "back" {
 			m.currentView = ViewMainMenu
 		}
@@ -105,14 +105,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) View() string {
 	switch m.currentView {
+	case ViewExport:
+		return m.export.View()
 	case ViewBackup:
 		return m.backup.View()
 	case ViewRestore:
 		return m.restore.View()
-	case ViewProfiles:
-		return m.profiles.View()
-	case ViewSettings:
-		return m.settings.View()
+	case ViewImport:
+		return m.importView.View()
 	case ViewAbout:
 		return m.about.View()
 	default:

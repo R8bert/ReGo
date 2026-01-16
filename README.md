@@ -54,6 +54,21 @@ go build -o rego .
 ./rego
 ```
 
+### 🚀 Quick Export (Recommended)
+
+The easiest way to backup your system - creates a **single portable file**:
+
+1. Select **Quick Export** from the main menu
+2. Choose what to include (all selected by default)
+3. Press `Enter` - done!
+
+Your backup is saved as: `~/rego-backup-[hostname]-[date].tar.gz`
+
+**Copy this single file to:**
+- USB drive
+- Cloud storage (Google Drive, Dropbox, etc.)
+- Email it to yourself
+
 ### Keyboard Navigation
 
 | Key | Action |
@@ -66,22 +81,13 @@ go build -o rego .
 | `Esc` | Go back |
 | `q` | Quit |
 
-### Creating a Backup
-
-1. Select **Backup System** from the main menu
-2. Choose which components to backup (all selected by default)
-3. Press `Enter` to confirm
-4. Wait for the backup to complete
-
-Backups are saved to: `~/.config/rego/backups/[timestamp]/`
-
 ### Restoring from Backup
 
-1. Select **Restore System** from the main menu
-2. Choose a backup to restore from
-3. Select which components to restore
-4. Press `d` to toggle **dry-run mode** (recommended for first run)
-5. Confirm and start the restore
+1. Copy your `rego-backup-*.tar.gz` file to the new system
+2. Run `./rego`
+3. Select **Restore System**
+4. Choose your backup and components to restore
+5. Use **dry-run mode** first (press `d`) to preview changes
 
 > ⚠️ **Tip**: Always use dry-run mode first to see what will be changed!
 

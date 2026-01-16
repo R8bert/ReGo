@@ -2,8 +2,8 @@ package views
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/r8bert/rego/ui/styles"
 	"github.com/r8bert/rego/ui/components"
+	"github.com/r8bert/rego/ui/styles"
 )
 
 type MainMenuView struct {
@@ -13,10 +13,10 @@ type MainMenuView struct {
 
 func NewMainMenuView() MainMenuView {
 	items := []components.MenuItem{
-		{ID: "backup", Title: "Backup System", Description: "Create a backup of your current configuration", Icon: "💾"},
-		{ID: "restore", Title: "Restore System", Description: "Restore from a previous backup", Icon: "🔄"},
-		{ID: "profiles", Title: "Manage Profiles", Description: "View and manage saved backup profiles", Icon: "📁"},
-		{ID: "settings", Title: "Settings", Description: "Configure backup options", Icon: "⚙️"},
+		{ID: "export", Title: "Quick Export", Description: "Create a single portable backup file", Icon: "📦"},
+		{ID: "backup", Title: "Full Backup", Description: "Create a detailed backup to folder", Icon: "💾"},
+		{ID: "restore", Title: "Restore System", Description: "Restore from a backup", Icon: "🔄"},
+		{ID: "import", Title: "Import Backup", Description: "Import from a portable backup file", Icon: "📥"},
 		{ID: "about", Title: "About", Description: "About ReGo", Icon: "ℹ️"},
 		{ID: "quit", Title: "Quit", Description: "Exit the application", Icon: "🚪"},
 	}
