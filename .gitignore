@@ -1,0 +1,28 @@
+# Binary
+rego
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Dependency directories
+vendor/
+
+# Debug
+debug
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
