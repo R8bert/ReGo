@@ -21,6 +21,9 @@ const (
 type LightBackupView struct {
 	phase      LightPhase
 	checkboxes *components.CheckboxList
+	spinner    *components.Spinner
+	progress   *components.AnimatedProgress
+	frame      int
 	path       string
 	size       int64
 	stats      map[string]int
@@ -44,6 +47,8 @@ func NewLightBackupView() LightBackupView {
 	}
 	return LightBackupView{
 		checkboxes: components.NewCheckboxList(items),
+		spinner:    components.NewSpinner(),
+		progress:   components.NewAnimatedProgress(5),
 		path:       backup.GetDefaultLightBackupPath(),
 	}
 }
@@ -52,6 +57,14 @@ func (v LightBackupView) Init() tea.Cmd { return nil }
 
 func (v LightBackupView) Update(msg tea.Msg) (LightBackupView, tea.Cmd, string) {
 	switch msg := msg.(type) {
+	case components.TickMsg:
+		v.frame++
+		v.spinner.Tick()
+		v.progress.Tick()
+		if v.phase == LightPhaseRunning {
+			return v, components.Tick(), ""
+		}
+		return v, nil, ""
 	case lightBackupDoneMsg:
 		v.phase = LightPhaseDone
 		v.path = msg.path
@@ -74,7 +87,8 @@ func (v LightBackupView) Update(msg tea.Msg) (LightBackupView, tea.Cmd, string) 
 			case "enter":
 				if len(v.checkboxes.GetSelected()) > 0 {
 					v.phase = LightPhaseRunning
-					return v, v.runBackup(), ""
+					v.progress = components.NewAnimatedProgress(len(v.checkboxes.GetSelected()))
+					return v, tea.Batch(v.runBackup(), components.Tick()), ""
 				}
 			case "esc", "q":
 				return v, nil, "back"
@@ -138,6 +152,10 @@ func formatSize(b int64) string {
 	return fmt.Sprintf("%.1f MB", float64(b)/(1024*1024))
 }
 
+// Animated spinner frames
+var saveSpinner = []string{"◐", "◓", "◑", "◒"}
+var successAnim = []string{"✓", "★", "✓", "☆"}
+
 func (v LightBackupView) View() string {
 	s := styles.RenderLogo() + "\n\n"
 	s += styles.TitleStyle.Render("⚡ Quick Save") + "\n"
@@ -147,35 +165,69 @@ func (v LightBackupView) View() string {
 	case LightPhaseSelect:
 		s += v.checkboxes.View() + "\n"
 		s += styles.DimStyle.Render("Output: "+v.path) + "\n\n"
-		s += styles.FooterStyle.Render("Space: Toggle • a: All • Enter: Save • Esc: Back")
+		// Animated hint
+		cursor := []string{"▸", "►", "▸", "▶"}[v.frame/3%4]
+		s += styles.SuccessStyle.Render(cursor+" Press ENTER to save") + "\n"
+		s += styles.FooterStyle.Render("Space: Toggle • a: All • Esc: Back")
 
 	case LightPhaseRunning:
-		s += styles.WarningStyle.Render("⏳ Scanning system...") + "\n"
+		// Animated spinner
+		spinner := saveSpinner[v.frame/2%len(saveSpinner)]
+		s += "\n"
+		s += styles.WarningStyle.Render("  "+spinner+" Scanning system "+spinner) + "\n\n"
+
+		// Animated dots
+		dots := []string{"", ".", "..", "..."}[v.frame/3%4]
+		s += styles.DimStyle.Render("  Collecting package lists"+dots) + "\n"
+
+		// Progress bar animation
+		barWidth := 20
+		pos := v.frame % (barWidth * 2)
+		if pos >= barWidth {
+			pos = barWidth*2 - pos
+		}
+		bar := ""
+		for i := 0; i < barWidth; i++ {
+			if i >= pos-2 && i <= pos+2 {
+				bar += "█"
+			} else {
+				bar += "░"
+			}
+		}
+		s += "\n  [" + styles.SuccessStyle.Render(bar) + "]\n"
 
 	case LightPhaseDone:
 		if v.error != nil {
 			s += styles.ErrorStyle.Render("✗ Failed: "+v.error.Error()) + "\n"
 		} else {
-			s += styles.SuccessStyle.Render("✓ Saved!") + "\n\n"
-			s += fmt.Sprintf("📄 File: %s\n", styles.SelectedStyle.Render(v.path))
-			s += fmt.Sprintf("📊 Size: %s\n\n", formatSize(v.size))
+			// Success animation
+			star := successAnim[v.frame/3%len(successAnim)]
+			s += "\n"
+			s += styles.SuccessStyle.Render("  "+star+" Saved successfully! "+star) + "\n\n"
+			s += fmt.Sprintf("  📄 File: %s\n", styles.SelectedStyle.Render(v.path))
+			s += fmt.Sprintf("  📊 Size: %s\n\n", formatSize(v.size))
 			if v.stats != nil {
 				if v.stats["flatpaks"] > 0 {
-					s += fmt.Sprintf("   • %d Flatpaks\n", v.stats["flatpaks"])
+					s += fmt.Sprintf("     • %d Flatpaks\n", v.stats["flatpaks"])
 				}
 				if v.stats["rpm"] > 0 {
-					s += fmt.Sprintf("   • %d RPM packages\n", v.stats["rpm"])
+					s += fmt.Sprintf("     • %d RPM packages\n", v.stats["rpm"])
 				}
 				if v.stats["extensions"] > 0 {
-					s += fmt.Sprintf("   • %d GNOME extensions\n", v.stats["extensions"])
+					s += fmt.Sprintf("     • %d Extensions\n", v.stats["extensions"])
 				}
 				if v.stats["repos"] > 0 {
-					s += fmt.Sprintf("   • %d Repositories\n", v.stats["repos"])
+					s += fmt.Sprintf("     • %d Repos\n", v.stats["repos"])
 				}
 			}
-			s += "\n" + styles.DescriptionStyle.Render("Copy this file to USB, cloud, or email it!")
+			s += "\n  " + styles.DescriptionStyle.Render("Copy to USB, cloud, or email!")
 		}
-		s += "\n\n" + styles.DimStyle.Render("Press any key to continue")
+		// Blinking prompt
+		if v.frame/5%2 == 0 {
+			s += "\n\n  " + styles.DimStyle.Render("▸ Press any key to continue")
+		} else {
+			s += "\n\n  " + styles.DimStyle.Render("  Press any key to continue")
+		}
 	}
 
 	return s
@@ -184,6 +236,7 @@ func (v LightBackupView) View() string {
 // LightRestoreView for restoring from a light backup
 type LightRestoreView struct {
 	phase   int
+	frame   int
 	path    string
 	backup  *backup.LightBackup
 	dryRun  bool
@@ -200,10 +253,13 @@ func NewLightRestoreView() LightRestoreView {
 	return LightRestoreView{path: backup.GetDefaultLightBackupPath(), dryRun: true}
 }
 
-func (v LightRestoreView) Init() tea.Cmd { return nil }
+func (v LightRestoreView) Init() tea.Cmd { return components.Tick() }
 
 func (v LightRestoreView) Update(msg tea.Msg) (LightRestoreView, tea.Cmd, string) {
 	switch msg := msg.(type) {
+	case components.TickMsg:
+		v.frame++
+		return v, components.Tick(), ""
 	case lightRestoreDoneMsg:
 		v.phase = 2
 		v.results = msg.results
@@ -254,7 +310,9 @@ func (v LightRestoreView) View() string {
 
 	switch v.phase {
 	case 0:
-		s += "Looking for: " + styles.SelectedStyle.Render(v.path) + "\n\n"
+		// Animated search
+		search := []string{"🔍", "🔎", "🔍", "🔎"}[v.frame/3%4]
+		s += search + " Looking for: " + styles.SelectedStyle.Render(v.path) + "\n\n"
 		if v.error != nil {
 			s += styles.ErrorStyle.Render("Not found: "+v.error.Error()) + "\n"
 		}

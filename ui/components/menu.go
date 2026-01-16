@@ -34,8 +34,10 @@ func (m *Menu) Down() {
 		m.cursor++
 	}
 }
-func (m *Menu) Selected() MenuItem { return m.items[m.cursor] }
-func (m *Menu) SelectedIndex() int { return m.cursor }
+func (m *Menu) Selected() MenuItem   { return m.items[m.cursor] }
+func (m *Menu) SelectedIndex() int   { return m.cursor }
+func (m *Menu) GetItems() []MenuItem { return m.items }
+func (m *Menu) GetCursor() int       { return m.cursor }
 
 func (m *Menu) View() string {
 	var b strings.Builder

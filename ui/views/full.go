@@ -21,6 +21,7 @@ const (
 type FullSaveView struct {
 	phase      FullSavePhase
 	checkboxes *components.CheckboxList
+	frame      int
 	path       string
 	size       int64
 	stats      map[string]int
@@ -54,10 +55,13 @@ func NewFullSaveView() FullSaveView {
 	}
 }
 
-func (v FullSaveView) Init() tea.Cmd { return nil }
+func (v FullSaveView) Init() tea.Cmd { return components.Tick() }
 
 func (v FullSaveView) Update(msg tea.Msg) (FullSaveView, tea.Cmd, string) {
 	switch msg := msg.(type) {
+	case components.TickMsg:
+		v.frame++
+		return v, components.Tick(), ""
 	case fullSaveDoneMsg:
 		v.phase = FullSavePhaseDone
 		v.path = msg.path
@@ -80,7 +84,7 @@ func (v FullSaveView) Update(msg tea.Msg) (FullSaveView, tea.Cmd, string) {
 			case "enter":
 				if len(v.checkboxes.GetSelected()) > 0 {
 					v.phase = FullSavePhaseRunning
-					return v, v.runBackup(), ""
+					return v, tea.Batch(v.runBackup(), components.Tick()), ""
 				}
 			case "esc", "q":
 				return v, nil, "back"
@@ -141,43 +145,6 @@ func (v FullSaveView) runBackup() tea.Cmd {
 	}
 }
 
-func (v FullSaveView) View() string {
-	s := styles.RenderLogo() + "\n\n"
-	s += styles.TitleStyle.Render("💾 Full Save") + "\n"
-	s += styles.DescriptionStyle.Render("Create a complete backup with all files") + "\n\n"
-
-	switch v.phase {
-	case FullSavePhaseSelect:
-		s += v.checkboxes.View() + "\n"
-		s += styles.DimStyle.Render("Output: "+v.path) + "\n\n"
-		s += styles.FooterStyle.Render("Space: Toggle • a: All • Enter: Save • Esc: Back")
-
-	case FullSavePhaseRunning:
-		s += styles.WarningStyle.Render("⏳ Creating backup...") + "\n"
-		s += styles.DimStyle.Render("This may take a moment for large files")
-
-	case FullSavePhaseDone:
-		if v.error != nil {
-			s += styles.ErrorStyle.Render("✗ Failed: "+v.error.Error()) + "\n"
-		} else {
-			s += styles.SuccessStyle.Render("✓ Backup complete!") + "\n\n"
-			s += fmt.Sprintf("📦 File: %s\n", styles.SelectedStyle.Render(v.path))
-			s += fmt.Sprintf("📊 Size: %s\n\n", formatSizeFull(v.size))
-			if v.stats != nil {
-				for k, v := range v.stats {
-					if v > 0 {
-						s += fmt.Sprintf("   • %d %s\n", v, k)
-					}
-				}
-			}
-			s += "\n" + styles.DescriptionStyle.Render("Copy this file to USB, cloud, or external drive!")
-		}
-		s += "\n\n" + styles.DimStyle.Render("Press any key to continue")
-	}
-
-	return s
-}
-
 func formatSizeFull(b int64) string {
 	if b < 1024 {
 		return fmt.Sprintf("%d B", b)
@@ -189,4 +156,119 @@ func formatSizeFull(b int64) string {
 		return fmt.Sprintf("%.1f MB", float64(b)/(1024*1024))
 	}
 	return fmt.Sprintf("%.2f GB", float64(b)/(1024*1024*1024))
+}
+
+// Animation frames
+var zipAnim = []string{"🗜️", "📦", "🗜️", "📦"}
+
+func (v FullSaveView) View() string {
+	s := styles.RenderLogo() + "\n\n"
+	s += styles.TitleStyle.Render("💾 Full Save") + "\n"
+	s += styles.DescriptionStyle.Render("Create a complete backup with all files") + "\n\n"
+
+	switch v.phase {
+	case FullSavePhaseSelect:
+		s += v.checkboxes.View() + "\n"
+		s += styles.DimStyle.Render("Output: "+v.path) + "\n\n"
+		// Animated hint
+		cursor := []string{"▸", "►", "▸", "▶"}[v.frame/3%4]
+		s += styles.SuccessStyle.Render(cursor+" Press ENTER to save") + "\n"
+		s += styles.FooterStyle.Render("Space: Toggle • a: All • Esc: Back")
+
+	case FullSavePhaseRunning:
+		s += "\n"
+		// Big animated backup indicator
+		spinner := []string{"◐", "◓", "◑", "◒"}[v.frame/2%4]
+		zip := zipAnim[v.frame/3%len(zipAnim)]
+
+		s += styles.WarningStyle.Render(fmt.Sprintf("  %s Creating backup archive %s", spinner, spinner)) + "\n\n"
+
+		// Animated file copying visualization
+		steps := []string{"Scanning packages...", "Copying dotfiles...", "Copying fonts...", "Compressing archive..."}
+		step := v.frame / 10 % len(steps)
+		for i, st := range steps {
+			icon := "○"
+			if i < step {
+				icon = styles.SuccessStyle.Render("●")
+			} else if i == step {
+				icon = styles.WarningStyle.Render(spinner)
+			}
+			s += fmt.Sprintf("  %s %s\n", icon, st)
+		}
+
+		// Moving progress bar
+		s += "\n"
+		barWidth := 25
+		pos := v.frame % (barWidth * 2)
+		if pos >= barWidth {
+			pos = barWidth*2 - pos
+		}
+		bar := ""
+		for i := 0; i < barWidth; i++ {
+			if i >= pos-3 && i <= pos+3 {
+				if i == pos {
+					bar += zip
+				} else {
+					bar += "█"
+				}
+			} else {
+				bar += "░"
+			}
+		}
+		s += "  [" + styles.SuccessStyle.Render(bar) + "]\n"
+		s += "\n  " + styles.DimStyle.Render("This may take a moment for large files...")
+
+	case FullSavePhaseDone:
+		if v.error != nil {
+			s += styles.ErrorStyle.Render("✗ Failed: "+v.error.Error()) + "\n"
+		} else {
+			// Celebration animation
+			stars := []string{"✨", "⭐", "🌟", "✨"}
+			star := stars[v.frame/3%len(stars)]
+
+			s += "\n"
+			s += styles.SuccessStyle.Render(fmt.Sprintf("  %s Backup complete! %s", star, star)) + "\n\n"
+			s += fmt.Sprintf("  📦 File: %s\n", styles.SelectedStyle.Render(v.path))
+			s += fmt.Sprintf("  📊 Size: %s\n\n", formatSizeFull(v.size))
+
+			// Stats with icons
+			if v.stats != nil {
+				for k, val := range v.stats {
+					if val > 0 {
+						icon := "•"
+						switch k {
+						case "flatpaks":
+							icon = "📦"
+						case "rpm":
+							icon = "📦"
+						case "dotfiles":
+							icon = "📄"
+						case "fonts":
+							icon = "🔤"
+						case "extensions":
+							icon = "🧩"
+						case "themes":
+							icon = "🎨"
+						case "backgrounds":
+							icon = "🖼️"
+						case "ssh":
+							icon = "🔐"
+						case "autostart":
+							icon = "🚀"
+						}
+						s += fmt.Sprintf("     %s %d %s\n", icon, val, k)
+					}
+				}
+			}
+			s += "\n  " + styles.DescriptionStyle.Render("Copy to USB or external drive!")
+		}
+		// Blinking prompt
+		if v.frame/5%2 == 0 {
+			s += "\n\n  " + styles.DimStyle.Render("▸ Press any key to continue")
+		} else {
+			s += "\n\n  " + styles.DimStyle.Render("  Press any key to continue")
+		}
+	}
+
+	return s
 }

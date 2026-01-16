@@ -9,6 +9,7 @@ import (
 type MainMenuView struct {
 	menu   *components.Menu
 	footer *components.Footer
+	frame  int
 }
 
 func NewMainMenuView() MainMenuView {
@@ -25,10 +26,13 @@ func NewMainMenuView() MainMenuView {
 	}
 }
 
-func (m MainMenuView) Init() tea.Cmd { return nil }
+func (m MainMenuView) Init() tea.Cmd { return components.Tick() }
 
 func (m MainMenuView) Update(msg tea.Msg) (MainMenuView, tea.Cmd, string) {
 	switch msg := msg.(type) {
+	case components.TickMsg:
+		m.frame++
+		return m, components.Tick(), ""
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "up", "k":
@@ -44,10 +48,39 @@ func (m MainMenuView) Update(msg tea.Msg) (MainMenuView, tea.Cmd, string) {
 	return m, nil, ""
 }
 
+// Animated logo frames
+var logoColors = []string{"#7C3AED", "#8B5CF6", "#A78BFA", "#8B5CF6"}
+
 func (m MainMenuView) View() string {
+	// Animated logo with subtle pulse effect
+	frame := m.frame / 4 % 4
+	_ = frame // Could be used for color cycling
+
 	s := styles.RenderLogo() + "\n"
-	s += styles.RenderTagline() + "\n\n"
-	s += m.menu.View() + "\n"
-	s += m.footer.View()
+
+	// Animated tagline
+	taglines := []string{
+		"Linux Reinstall Helper",
+		"Linux Reinstall Helper ✨",
+		"Linux Reinstall Helper",
+		"Linux Reinstall Helper ⚡",
+	}
+	s += styles.SubtitleStyle.Render(taglines[m.frame/10%len(taglines)]) + "\n\n"
+
+	// Menu with animated selection indicator
+	for i, item := range m.menu.GetItems() {
+		if i == m.menu.GetCursor() {
+			// Animated cursor
+			cursors := []string{"▸ ", "► ", "▹ ", "► "}
+			cursor := cursors[m.frame/3%len(cursors)]
+			line := cursor + item.Icon + " " + styles.SelectedStyle.Render(item.Title)
+			s += line + "\n"
+			s += "    " + styles.DescriptionStyle.Render(item.Description) + "\n"
+		} else {
+			s += "  " + item.Icon + " " + styles.NormalStyle.Render(item.Title) + "\n"
+		}
+	}
+
+	s += "\n" + m.footer.View()
 	return s
 }
