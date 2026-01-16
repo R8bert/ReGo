@@ -13,7 +13,8 @@ type MainMenuView struct {
 
 func NewMainMenuView() MainMenuView {
 	items := []components.MenuItem{
-		{ID: "save", Title: "Quick Save", Description: "Save your system to a single file", Icon: "⚡"},
+		{ID: "quick", Title: "Quick Save", Description: "Light backup - just package lists (few KB)", Icon: "⚡"},
+		{ID: "full", Title: "Full Save", Description: "Complete backup with fonts, dotfiles, themes", Icon: "💾"},
 		{ID: "load", Title: "Load Backup", Description: "Restore from a backup file", Icon: "📥"},
 		{ID: "about", Title: "About", Description: "About ReGo", Icon: "ℹ️"},
 		{ID: "quit", Title: "Quit", Description: "Exit", Icon: "🚪"},

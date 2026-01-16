@@ -9,7 +9,8 @@ type View int
 
 const (
 	ViewMainMenu View = iota
-	ViewSave
+	ViewQuickSave
+	ViewFullSave
 	ViewLoad
 	ViewAbout
 )
@@ -17,7 +18,8 @@ const (
 type Model struct {
 	currentView View
 	mainMenu    views.MainMenuView
-	save        views.LightBackupView
+	quickSave   views.LightBackupView
+	fullSave    views.FullSaveView
 	load        views.LightRestoreView
 	about       views.AboutView
 }
@@ -47,9 +49,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ViewMainMenu:
 		m.mainMenu, cmd, nav = m.mainMenu.Update(msg)
 		switch nav {
-		case "save":
-			m.save = views.NewLightBackupView()
-			m.currentView = ViewSave
+		case "quick":
+			m.quickSave = views.NewLightBackupView()
+			m.currentView = ViewQuickSave
+		case "full":
+			m.fullSave = views.NewFullSaveView()
+			m.currentView = ViewFullSave
 		case "load":
 			m.load = views.NewLightRestoreView()
 			m.currentView = ViewLoad
@@ -58,8 +63,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "quit":
 			return m, tea.Quit
 		}
-	case ViewSave:
-		m.save, cmd, nav = m.save.Update(msg)
+	case ViewQuickSave:
+		m.quickSave, cmd, nav = m.quickSave.Update(msg)
+		if nav == "back" {
+			m.currentView = ViewMainMenu
+		}
+	case ViewFullSave:
+		m.fullSave, cmd, nav = m.fullSave.Update(msg)
 		if nav == "back" {
 			m.currentView = ViewMainMenu
 		}
@@ -80,8 +90,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) View() string {
 	switch m.currentView {
-	case ViewSave:
-		return m.save.View()
+	case ViewQuickSave:
+		return m.quickSave.View()
+	case ViewFullSave:
+		return m.fullSave.View()
 	case ViewLoad:
 		return m.load.View()
 	case ViewAbout:
