@@ -27,8 +27,27 @@ type LightBackup struct {
 	Repos []string `json:"repos,omitempty"`
 }
 
-// CreateLightBackup creates a minimal single-file backup
+// LightBackupOptions controls what to include in the backup
+type LightBackupOptions struct {
+	Flatpaks   bool
+	RPM        bool
+	Extensions bool
+	Settings   bool
+	Repos      bool
+}
+
+// DefaultLightBackupOptions returns all options enabled
+func DefaultLightBackupOptions() LightBackupOptions {
+	return LightBackupOptions{Flatpaks: true, RPM: true, Extensions: true, Settings: true, Repos: true}
+}
+
+// CreateLightBackup creates a minimal single-file backup with all options
 func CreateLightBackup() (*LightBackup, error) {
+	return CreateLightBackupWithOptions(DefaultLightBackupOptions())
+}
+
+// CreateLightBackupWithOptions creates a backup with selected components
+func CreateLightBackupWithOptions(opts LightBackupOptions) (*LightBackup, error) {
 	hostname, _ := os.Hostname()
 
 	backup := &LightBackup{
@@ -38,8 +57,8 @@ func CreateLightBackup() (*LightBackup, error) {
 		User:      os.Getenv("USER"),
 	}
 
-	// Flatpaks - just the app IDs
-	if utils.CommandExists("flatpak") {
+	// Flatpaks
+	if opts.Flatpaks && utils.CommandExists("flatpak") {
 		lines, _ := utils.RunCommandLines("flatpak", "list", "--app", "--columns=application")
 		for _, line := range lines {
 			if line != "" {
@@ -48,8 +67,8 @@ func CreateLightBackup() (*LightBackup, error) {
 		}
 	}
 
-	// RPM packages - user installed
-	if utils.CommandExists("dnf") {
+	// RPM packages
+	if opts.RPM && utils.CommandExists("dnf") {
 		result := utils.RunCommand("dnf", "repoquery", "--userinstalled", "--qf", "%{name}")
 		if result.Error == nil {
 			for _, line := range splitLines(result.Stdout) {
@@ -60,25 +79,27 @@ func CreateLightBackup() (*LightBackup, error) {
 		}
 	}
 
-	// GNOME extensions - just UUIDs
-	if utils.CommandExists("gnome-extensions") {
+	// GNOME extensions
+	if opts.Extensions && utils.CommandExists("gnome-extensions") {
 		lines, _ := utils.RunCommandLines("gnome-extensions", "list")
 		backup.GnomeExtensions = lines
 	}
 
-	// Dconf settings - full dump (usually only a few KB)
-	if utils.CommandExists("dconf") {
+	// Dconf settings
+	if opts.Settings && utils.CommandExists("dconf") {
 		result := utils.RunCommand("dconf", "dump", "/")
 		if result.Error == nil {
 			backup.DconfSettings = result.Stdout
 		}
 	}
 
-	// Repos - just names of third-party repos
-	reposBackup := NewReposBackup()
-	if items, err := reposBackup.List(); err == nil {
-		for _, item := range items {
-			backup.Repos = append(backup.Repos, item.Name)
+	// Repos
+	if opts.Repos {
+		reposBackup := NewReposBackup()
+		if items, err := reposBackup.List(); err == nil {
+			for _, item := range items {
+				backup.Repos = append(backup.Repos, item.Name)
+			}
 		}
 	}
 

@@ -6,23 +6,25 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/r8bert/rego/internal/backup"
+	"github.com/r8bert/rego/ui/components"
 	"github.com/r8bert/rego/ui/styles"
 )
 
 type LightPhase int
 
 const (
-	LightPhaseReady LightPhase = iota
+	LightPhaseSelect LightPhase = iota
 	LightPhaseRunning
 	LightPhaseDone
 )
 
 type LightBackupView struct {
-	phase LightPhase
-	path  string
-	size  int64
-	stats map[string]int
-	error error
+	phase      LightPhase
+	checkboxes *components.CheckboxList
+	path       string
+	size       int64
+	stats      map[string]int
+	error      error
 }
 
 type lightBackupDoneMsg struct {
@@ -33,7 +35,17 @@ type lightBackupDoneMsg struct {
 }
 
 func NewLightBackupView() LightBackupView {
-	return LightBackupView{path: backup.GetDefaultLightBackupPath()}
+	items := []components.CheckboxItem{
+		{ID: "flatpaks", Title: "Flatpak Apps", Description: "Installed Flatpak applications", Checked: true},
+		{ID: "rpm", Title: "RPM Packages", Description: "User-installed RPM packages", Checked: true},
+		{ID: "extensions", Title: "GNOME Extensions", Description: "Shell extensions", Checked: true},
+		{ID: "settings", Title: "GNOME Settings", Description: "Desktop customizations (dconf)", Checked: true},
+		{ID: "repos", Title: "Repositories", Description: "Third-party DNF repos", Checked: true},
+	}
+	return LightBackupView{
+		checkboxes: components.NewCheckboxList(items),
+		path:       backup.GetDefaultLightBackupPath(),
+	}
 }
 
 func (v LightBackupView) Init() tea.Cmd { return nil }
@@ -49,11 +61,21 @@ func (v LightBackupView) Update(msg tea.Msg) (LightBackupView, tea.Cmd, string) 
 		return v, nil, ""
 	case tea.KeyMsg:
 		switch v.phase {
-		case LightPhaseReady:
+		case LightPhaseSelect:
 			switch msg.String() {
+			case "up", "k":
+				v.checkboxes.Up()
+			case "down", "j":
+				v.checkboxes.Down()
+			case " ":
+				v.checkboxes.Toggle()
+			case "a":
+				v.checkboxes.ToggleAll()
 			case "enter":
-				v.phase = LightPhaseRunning
-				return v, v.runBackup(), ""
+				if len(v.checkboxes.GetSelected()) > 0 {
+					v.phase = LightPhaseRunning
+					return v, v.runBackup(), ""
+				}
 			case "esc", "q":
 				return v, nil, "back"
 			}
@@ -64,9 +86,30 @@ func (v LightBackupView) Update(msg tea.Msg) (LightBackupView, tea.Cmd, string) 
 	return v, nil, ""
 }
 
+func (v LightBackupView) getOptions() backup.LightBackupOptions {
+	selected := v.checkboxes.GetSelected()
+	opts := backup.LightBackupOptions{}
+	for _, item := range selected {
+		switch item.ID {
+		case "flatpaks":
+			opts.Flatpaks = true
+		case "rpm":
+			opts.RPM = true
+		case "extensions":
+			opts.Extensions = true
+		case "settings":
+			opts.Settings = true
+		case "repos":
+			opts.Repos = true
+		}
+	}
+	return opts
+}
+
 func (v LightBackupView) runBackup() tea.Cmd {
 	return func() tea.Msg {
-		b, err := backup.CreateLightBackup()
+		opts := v.getOptions()
+		b, err := backup.CreateLightBackupWithOptions(opts)
 		if err != nil {
 			return lightBackupDoneMsg{err: err}
 		}
@@ -98,18 +141,13 @@ func formatSize(b int64) string {
 func (v LightBackupView) View() string {
 	s := styles.RenderLogo() + "\n\n"
 	s += styles.TitleStyle.Render("⚡ Quick Save") + "\n"
-	s += styles.DescriptionStyle.Render("Create a tiny backup file with all your package lists") + "\n\n"
+	s += styles.DescriptionStyle.Render("Select what to backup:") + "\n\n"
 
 	switch v.phase {
-	case LightPhaseReady:
-		s += styles.NormalStyle.Render("This will save:") + "\n\n"
-		s += "  📦 Flatpak apps\n"
-		s += "  📦 RPM packages\n"
-		s += "  🧩 GNOME extensions\n"
-		s += "  ⚙️  GNOME settings\n"
-		s += "  📁 Repository list\n\n"
+	case LightPhaseSelect:
+		s += v.checkboxes.View() + "\n"
 		s += styles.DimStyle.Render("Output: "+v.path) + "\n\n"
-		s += styles.SuccessStyle.Render("Press ENTER to save") + " • " + styles.DimStyle.Render("Esc to cancel")
+		s += styles.FooterStyle.Render("Space: Toggle • a: All • Enter: Save • Esc: Back")
 
 	case LightPhaseRunning:
 		s += styles.WarningStyle.Render("⏳ Scanning system...") + "\n"
@@ -122,10 +160,18 @@ func (v LightBackupView) View() string {
 			s += fmt.Sprintf("📄 File: %s\n", styles.SelectedStyle.Render(v.path))
 			s += fmt.Sprintf("📊 Size: %s\n\n", formatSize(v.size))
 			if v.stats != nil {
-				s += fmt.Sprintf("   • %d Flatpaks\n", v.stats["flatpaks"])
-				s += fmt.Sprintf("   • %d RPM packages\n", v.stats["rpm"])
-				s += fmt.Sprintf("   • %d GNOME extensions\n", v.stats["extensions"])
-				s += fmt.Sprintf("   • %d Repositories\n", v.stats["repos"])
+				if v.stats["flatpaks"] > 0 {
+					s += fmt.Sprintf("   • %d Flatpaks\n", v.stats["flatpaks"])
+				}
+				if v.stats["rpm"] > 0 {
+					s += fmt.Sprintf("   • %d RPM packages\n", v.stats["rpm"])
+				}
+				if v.stats["extensions"] > 0 {
+					s += fmt.Sprintf("   • %d GNOME extensions\n", v.stats["extensions"])
+				}
+				if v.stats["repos"] > 0 {
+					s += fmt.Sprintf("   • %d Repositories\n", v.stats["repos"])
+				}
 			}
 			s += "\n" + styles.DescriptionStyle.Render("Copy this file to USB, cloud, or email it!")
 		}
@@ -165,7 +211,7 @@ func (v LightRestoreView) Update(msg tea.Msg) (LightRestoreView, tea.Cmd, string
 		return v, nil, ""
 	case tea.KeyMsg:
 		switch v.phase {
-		case 0: // Select file
+		case 0:
 			switch msg.String() {
 			case "enter":
 				b, err := backup.LoadLightBackup(v.path)
@@ -178,7 +224,7 @@ func (v LightRestoreView) Update(msg tea.Msg) (LightRestoreView, tea.Cmd, string
 			case "esc":
 				return v, nil, "back"
 			}
-		case 1: // Confirm
+		case 1:
 			switch msg.String() {
 			case "d":
 				v.dryRun = !v.dryRun
@@ -197,7 +243,6 @@ func (v LightRestoreView) Update(msg tea.Msg) (LightRestoreView, tea.Cmd, string
 
 func (v LightRestoreView) runRestore() tea.Cmd {
 	return func() tea.Msg {
-		// For now, just show what would be done
 		result := fmt.Sprintf("Would install:\n• %d Flatpaks\n• %d RPM packages\n• %d Extensions",
 			len(v.backup.Flatpaks), len(v.backup.RPMPackages), len(v.backup.GnomeExtensions))
 		return lightRestoreDoneMsg{results: result}
@@ -211,7 +256,7 @@ func (v LightRestoreView) View() string {
 	case 0:
 		s += "Looking for: " + styles.SelectedStyle.Render(v.path) + "\n\n"
 		if v.error != nil {
-			s += styles.ErrorStyle.Render("File not found: "+v.error.Error()) + "\n"
+			s += styles.ErrorStyle.Render("Not found: "+v.error.Error()) + "\n"
 		}
 		s += styles.DimStyle.Render("Enter: Load • Esc: Back")
 	case 1:
@@ -220,17 +265,14 @@ func (v LightRestoreView) View() string {
 			mode = styles.WarningStyle.Render("[LIVE]")
 		}
 		s += "Mode: " + mode + "\n\n"
-		s += fmt.Sprintf("Backup from: %s\n", v.backup.Hostname)
-		s += fmt.Sprintf("Created: %s\n\n", v.backup.CreatedAt.Format("2006-01-02 15:04"))
+		s += fmt.Sprintf("Backup from: %s (%s)\n\n", v.backup.Hostname, v.backup.CreatedAt.Format("2006-01-02"))
 		stats := v.backup.Stats()
 		s += fmt.Sprintf("   • %d Flatpaks\n", stats["flatpaks"])
 		s += fmt.Sprintf("   • %d RPM packages\n", stats["rpm"])
 		s += fmt.Sprintf("   • %d Extensions\n", stats["extensions"])
 		s += "\n" + styles.DimStyle.Render("d: Toggle mode • Enter: Restore • Esc: Back")
 	case 2:
-		s += v.results + "\n\n"
-		s += styles.DimStyle.Render("Press any key to continue")
+		s += v.results + "\n\n" + styles.DimStyle.Render("Press any key")
 	}
-
 	return s
 }
