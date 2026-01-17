@@ -2,6 +2,7 @@ package ui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/r8bert/rego/ui/views"
 )
 
@@ -17,6 +18,8 @@ const (
 
 type Model struct {
 	currentView View
+	width       int
+	height      int
 	mainMenu    views.MainMenuView
 	quickSave   views.LightBackupView
 	fullSave    views.FullSaveView
@@ -27,15 +30,23 @@ type Model struct {
 func NewModel() Model {
 	return Model{
 		currentView: ViewMainMenu,
+		width:       80,
+		height:      24,
 		mainMenu:    views.NewMainMenuView(),
 		about:       views.NewAboutView(),
 	}
 }
 
-func (m Model) Init() tea.Cmd { return nil }
+func (m Model) Init() tea.Cmd {
+	return tea.Batch(tea.EnterAltScreen, m.mainMenu.Init())
+}
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
@@ -89,16 +100,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
+	var content string
+
 	switch m.currentView {
 	case ViewQuickSave:
-		return m.quickSave.View()
+		content = m.quickSave.View()
 	case ViewFullSave:
-		return m.fullSave.View()
+		content = m.fullSave.View()
 	case ViewLoad:
-		return m.load.View()
+		content = m.load.View()
 	case ViewAbout:
-		return m.about.View()
+		content = m.about.View()
 	default:
-		return m.mainMenu.View()
+		content = m.mainMenu.View()
 	}
+
+	// Center content in the window
+	return lipgloss.Place(m.width, m.height,
+		lipgloss.Center, lipgloss.Center,
+		content)
 }

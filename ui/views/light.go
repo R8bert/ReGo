@@ -405,75 +405,97 @@ func joinLines(lines []string) string {
 }
 
 func (v LightRestoreView) View() string {
-	s := styles.TitleStyle.Render("📥 Load Backup") + "\n\n"
+	// Header
+	header := styles.TitleStyle.Render("📥 Load Backup")
+
+	var content string
 
 	switch v.phase {
 	case 0:
 		// Animated search
 		search := []string{"🔍", "🔎", "🔍", "🔎"}[v.frame/3%4]
-		s += search + " Looking for: " + styles.SelectedStyle.Render(v.path) + "\n\n"
+		content = search + " Looking for backup file:\n\n"
+		content += styles.BoxStyle.Render(v.path) + "\n\n"
 		if v.error != nil {
-			s += styles.ErrorStyle.Render("Not found: "+v.error.Error()) + "\n"
+			content += styles.ErrorStyle.Render("✗ "+v.error.Error()) + "\n\n"
 		}
-		s += styles.DimStyle.Render("Enter: Load • Esc: Back")
+		content += styles.DimStyle.Render("[Enter] Load  [Esc] Back")
+
 	case 1:
 		// Checking phase - show verification in progress
 		spinner := []string{"◐", "◓", "◑", "◒"}[v.frame/2%4]
-		s += styles.WarningStyle.Render(spinner+" Verifying installed packages...") + "\n\n"
-		s += styles.DimStyle.Render("   Checking Flatpaks...\n")
-		s += styles.DimStyle.Render("   Checking system packages...\n")
-		s += styles.DimStyle.Render("   Checking GNOME extensions...\n")
-	case 2:
-		s += styles.SuccessStyle.Render("✓ Verification complete") + "\n\n"
-		s += fmt.Sprintf("Backup from: %s (%s)\n", v.backup.Hostname, v.backup.CreatedAt.Format("2006-01-02"))
-		if v.backup.Distro != "" {
-			s += fmt.Sprintf("Distro: %s\n\n", v.backup.Distro)
-		} else {
-			s += "\n"
+		content = styles.WarningStyle.Render(spinner+" Verifying installed packages...") + "\n\n"
+
+		checks := []string{
+			styles.DimStyle.Render("   ◦ Scanning Flatpaks..."),
+			styles.DimStyle.Render("   ◦ Scanning system packages..."),
+			styles.DimStyle.Render("   ◦ Scanning GNOME extensions..."),
 		}
-		s += styles.NormalStyle.Render("Will install:") + "\n"
+		content += strings.Join(checks, "\n")
+
+	case 2:
+		// Confirm phase
+		content = styles.SuccessStyle.Render("✓ Verification complete") + "\n\n"
+
+		// Backup info box
+		infoLines := []string{
+			fmt.Sprintf("Host: %s", v.backup.Hostname),
+			fmt.Sprintf("Date: %s", v.backup.CreatedAt.Format("2006-01-02 15:04")),
+		}
+		if v.backup.Distro != "" {
+			infoLines = append(infoLines, fmt.Sprintf("Distro: %s", v.backup.Distro))
+		}
+		content += styles.CardStyle.Render(strings.Join(infoLines, "\n")) + "\n\n"
+
+		// What will be installed
+		content += styles.NormalStyle.Render("Packages to install:") + "\n\n"
 		c := v.restoreCheck
+
 		if len(c.FlatpaksToInstall) > 0 {
-			s += fmt.Sprintf("   • %d Flatpaks", len(c.FlatpaksToInstall))
+			line := fmt.Sprintf("   %s %d Flatpaks", styles.SuccessStyle.Render("●"), len(c.FlatpaksToInstall))
 			if c.FlatpaksSkipped > 0 {
-				s += styles.DimStyle.Render(fmt.Sprintf(" (%d already installed)", c.FlatpaksSkipped))
+				line += styles.DimStyle.Render(fmt.Sprintf(" (%d skipped)", c.FlatpaksSkipped))
 			}
-			s += "\n"
+			content += line + "\n"
 		}
 		if len(c.RPMToInstall) > 0 {
-			s += fmt.Sprintf("   • %d RPM packages (requires sudo)", len(c.RPMToInstall))
+			line := fmt.Sprintf("   %s %d RPM packages", styles.WarningStyle.Render("●"), len(c.RPMToInstall))
 			if c.RPMSkipped > 0 {
-				s += styles.DimStyle.Render(fmt.Sprintf(" (%d already installed)", c.RPMSkipped))
+				line += styles.DimStyle.Render(fmt.Sprintf(" (%d skipped)", c.RPMSkipped))
 			}
-			s += "\n"
+			content += line + " " + styles.DimStyle.Render("[sudo]") + "\n"
 		}
 		if len(c.APTToInstall) > 0 {
-			s += fmt.Sprintf("   • %d APT packages (requires sudo)", len(c.APTToInstall))
+			line := fmt.Sprintf("   %s %d APT packages", styles.WarningStyle.Render("●"), len(c.APTToInstall))
 			if c.APTSkipped > 0 {
-				s += styles.DimStyle.Render(fmt.Sprintf(" (%d already installed)", c.APTSkipped))
+				line += styles.DimStyle.Render(fmt.Sprintf(" (%d skipped)", c.APTSkipped))
 			}
-			s += "\n"
+			content += line + " " + styles.DimStyle.Render("[sudo]") + "\n"
 		}
 		if len(c.ExtensionsToEnable) > 0 {
-			s += fmt.Sprintf("   • %d GNOME extensions", len(c.ExtensionsToEnable))
+			line := fmt.Sprintf("   %s %d GNOME extensions", styles.AccentStyle.Render("●"), len(c.ExtensionsToEnable))
 			if c.ExtensionsSkipped > 0 {
-				s += styles.DimStyle.Render(fmt.Sprintf(" (%d already enabled)", c.ExtensionsSkipped))
+				line += styles.DimStyle.Render(fmt.Sprintf(" (%d skipped)", c.ExtensionsSkipped))
 			}
-			s += "\n"
+			content += line + "\n"
 		}
 		if c.HasDconfSettings {
-			s += "   • dconf settings\n"
+			content += fmt.Sprintf("   %s dconf settings\n", styles.AccentStyle.Render("●"))
 		}
 
 		// Show if nothing to install
 		if len(c.FlatpaksToInstall) == 0 && len(c.RPMToInstall) == 0 &&
 			len(c.APTToInstall) == 0 && len(c.ExtensionsToEnable) == 0 && !c.HasDconfSettings {
-			s += styles.SuccessStyle.Render("   Everything is already installed!") + "\n"
+			content += styles.SuccessStyle.Render("   ✓ Everything is already installed!") + "\n"
 		}
 
-		s += "\n" + styles.DimStyle.Render("Enter: Start restore • Esc: Back")
+		content += "\n" + styles.DimStyle.Render("[Enter] Install  [Esc] Cancel")
+
 	case 3:
-		s += v.results + "\n\n" + styles.DimStyle.Render("Press any key to continue")
+		// Done phase
+		content = styles.CardStyle.Render(v.results) + "\n\n"
+		content += styles.DimStyle.Render("[Any key] Continue")
 	}
-	return s
+
+	return header + "\n\n" + content
 }
