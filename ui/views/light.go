@@ -38,12 +38,28 @@ type lightBackupDoneMsg struct {
 }
 
 func NewLightBackupView() LightBackupView {
+	// Get package manager for dynamic label
+	pkgLabel := "System Packages"
+	pkgDesc := "User-installed packages"
+	switch backup.DetectPackageManager() {
+	case backup.PMDNF:
+		pkgLabel = "RPM Packages"
+		pkgDesc = "User-installed DNF/RPM packages"
+	case backup.PMAPT:
+		pkgLabel = "APT Packages"
+		pkgDesc = "User-installed apt packages"
+	case backup.PMPacman:
+		pkgLabel = "Pacman Packages"
+		pkgDesc = "User-installed pacman packages"
+	}
+
 	items := []components.CheckboxItem{
 		{ID: "flatpaks", Title: "Flatpak Apps", Description: "Installed Flatpak applications", Checked: true},
-		{ID: "rpm", Title: "RPM Packages", Description: "User-installed RPM packages", Checked: true},
-		{ID: "extensions", Title: "GNOME Extensions", Description: "Shell extensions", Checked: true},
-		{ID: "settings", Title: "GNOME Settings", Description: "Desktop customizations (dconf)", Checked: true},
-		{ID: "repos", Title: "Repositories", Description: "Third-party DNF repos", Checked: true},
+		{ID: "rpm", Title: pkgLabel, Description: pkgDesc, Checked: true},
+		{ID: "extensions", Title: "GNOME Extensions", Description: "Shell extensions", Checked: backup.IsGNOME()},
+		{ID: "settings", Title: "GNOME Settings", Description: "Desktop customizations (dconf)", Checked: backup.IsGNOME()},
+		{ID: "kde", Title: "KDE Plasma", Description: "Plasma widgets list", Checked: backup.IsKDE()},
+		{ID: "repos", Title: "Repositories", Description: "Third-party repos", Checked: true},
 	}
 	return LightBackupView{
 		checkboxes: components.NewCheckboxList(items),
@@ -113,6 +129,8 @@ func (v LightBackupView) getOptions() backup.LightBackupOptions {
 			opts.Extensions = true
 		case "settings":
 			opts.Settings = true
+		case "kde":
+			opts.KDE = true
 		case "repos":
 			opts.Repos = true
 		}

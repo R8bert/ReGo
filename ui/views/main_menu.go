@@ -2,27 +2,34 @@ package views
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/r8bert/rego/internal/backup"
 	"github.com/r8bert/rego/ui/components"
 	"github.com/r8bert/rego/ui/styles"
 )
 
 type MainMenuView struct {
-	menu   *components.Menu
-	footer *components.Footer
+	cursor int
+	items  []menuItem
 	frame  int
 }
 
+type menuItem struct {
+	id    string
+	icon  string
+	title string
+	desc  string
+}
+
 func NewMainMenuView() MainMenuView {
-	items := []components.MenuItem{
-		{ID: "quick", Title: "Quick Save", Description: "Light backup - just package lists (few KB)", Icon: "⚡"},
-		{ID: "full", Title: "Full Save", Description: "Complete backup with fonts, dotfiles, themes", Icon: "💾"},
-		{ID: "load", Title: "Load Backup", Description: "Restore from a backup file", Icon: "📥"},
-		{ID: "about", Title: "About", Description: "About ReGo", Icon: "ℹ️"},
-		{ID: "quit", Title: "Quit", Description: "Exit", Icon: "🚪"},
-	}
 	return MainMenuView{
-		menu:   components.NewMenu(items),
-		footer: components.NewFooter("↑/↓: Navigate • Enter: Select • q: Quit"),
+		items: []menuItem{
+			{id: "quick", icon: ">", title: "Quick Save", desc: "Light backup - package lists only"},
+			{id: "full", icon: ">", title: "Full Save", desc: "Complete backup with all files"},
+			{id: "load", icon: ">", title: "Load Backup", desc: "Restore from a saved backup"},
+			{id: "about", icon: ">", title: "About", desc: "About ReGo"},
+			{id: "quit", icon: ">", title: "Quit", desc: "Exit application"},
+		},
 	}
 }
 
@@ -36,11 +43,15 @@ func (m MainMenuView) Update(msg tea.Msg) (MainMenuView, tea.Cmd, string) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "up", "k":
-			m.menu.Up()
+			if m.cursor > 0 {
+				m.cursor--
+			}
 		case "down", "j":
-			m.menu.Down()
+			if m.cursor < len(m.items)-1 {
+				m.cursor++
+			}
 		case "enter":
-			return m, nil, m.menu.Selected().ID
+			return m, nil, m.items[m.cursor].id
 		case "q", "ctrl+c":
 			return m, tea.Quit, "quit"
 		}
@@ -48,39 +59,51 @@ func (m MainMenuView) Update(msg tea.Msg) (MainMenuView, tea.Cmd, string) {
 	return m, nil, ""
 }
 
-// Animated logo frames
-var logoColors = []string{"#7C3AED", "#8B5CF6", "#A78BFA", "#8B5CF6"}
-
 func (m MainMenuView) View() string {
-	// Animated logo with subtle pulse effect
-	frame := m.frame / 4 % 4
-	_ = frame // Could be used for color cycling
+	container := lipgloss.NewStyle().Padding(1, 3)
 
-	s := styles.RenderLogo() + "\n"
+	// Logo
+	logo := styles.RenderLogo()
 
-	// Animated tagline
-	taglines := []string{
-		"Linux Reinstall Helper",
-		"Linux Reinstall Helper ✨",
-		"Linux Reinstall Helper",
-		"Linux Reinstall Helper ⚡",
-	}
-	s += styles.SubtitleStyle.Render(taglines[m.frame/10%len(taglines)]) + "\n\n"
+	// Tagline
+	tagline := lipgloss.NewStyle().
+		Width(styles.AppWidth).
+		Align(lipgloss.Center).
+		Render(styles.RenderTagline())
 
-	// Menu with animated selection indicator
-	for i, item := range m.menu.GetItems() {
-		if i == m.menu.GetCursor() {
-			// Animated cursor
-			cursors := []string{"▸ ", "► ", "▹ ", "► "}
-			cursor := cursors[m.frame/3%len(cursors)]
-			line := cursor + item.Icon + " " + styles.SelectedStyle.Render(item.Title)
-			s += line + "\n"
-			s += "    " + styles.DescriptionStyle.Render(item.Description) + "\n"
-		} else {
-			s += "  " + item.Icon + " " + styles.NormalStyle.Render(item.Title) + "\n"
+	// System info box
+	sysInfo := styles.GetSystemInfo()
+	desktopInfo := styles.GetDesktopSuggestion()
+	pkgMgr := backup.GetPackageManagerName()
+
+	infoContent := styles.DimStyle.Render("System: ") + styles.NormalStyle.Render(sysInfo) + "\n" +
+		styles.DimStyle.Render("Package Manager: ") + styles.NormalStyle.Render(pkgMgr) + "\n" +
+		styles.DimStyle.Render("Desktop: ") + desktopInfo
+
+	infoBox := styles.CardStyle.Width(styles.AppWidth - 6).Render(infoContent)
+
+	// Menu items
+	var menuContent string
+	for i, item := range m.items {
+		selected := i == m.cursor
+		menuContent += styles.RenderMenuItem(item.icon, item.title, item.desc, selected, m.frame)
+		if i < len(m.items)-1 {
+			menuContent += "\n"
 		}
 	}
 
-	s += "\n" + m.footer.View()
-	return s
+	// Menu card
+	menuCard := styles.CardStyle.Width(styles.AppWidth - 6).Render(menuContent)
+
+	// Footer
+	footer := lipgloss.NewStyle().
+		Width(styles.AppWidth).
+		Align(lipgloss.Center).
+		Foreground(styles.Muted).
+		MarginTop(1).
+		Render("[up/down] Navigate  [enter] Select  [q] Quit")
+
+	content := logo + tagline + "\n" + infoBox + "\n" + menuCard + footer
+
+	return container.Render(content)
 }

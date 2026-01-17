@@ -14,14 +14,20 @@ type LightBackup struct {
 	CreatedAt time.Time `json:"created_at"`
 	Hostname  string    `json:"hostname"`
 	User      string    `json:"user"`
+	Distro    string    `json:"distro,omitempty"`
+	Desktop   string    `json:"desktop,omitempty"` // GNOME, KDE, etc.
 
 	// Package lists (just names, easy to reinstall)
 	Flatpaks    []string `json:"flatpaks,omitempty"`
 	RPMPackages []string `json:"rpm_packages,omitempty"`
+	APTPackages []string `json:"apt_packages,omitempty"`
 
 	// GNOME
 	GnomeExtensions []string `json:"gnome_extensions,omitempty"`
-	DconfSettings   string   `json:"dconf_settings,omitempty"` // Raw dconf dump
+	DconfSettings   string   `json:"dconf_settings,omitempty"`
+
+	// KDE Plasma
+	KDEWidgets []string `json:"kde_widgets,omitempty"`
 
 	// Repos (just the names)
 	Repos []string `json:"repos,omitempty"`
@@ -31,8 +37,9 @@ type LightBackup struct {
 type LightBackupOptions struct {
 	Flatpaks   bool
 	RPM        bool
-	Extensions bool
-	Settings   bool
+	Extensions bool // GNOME extensions
+	Settings   bool // GNOME dconf settings
+	KDE        bool // KDE Plasma settings
 	Repos      bool
 }
 
@@ -55,6 +62,7 @@ func CreateLightBackupWithOptions(opts LightBackupOptions) (*LightBackup, error)
 		CreatedAt: time.Now(),
 		Hostname:  hostname,
 		User:      os.Getenv("USER"),
+		Distro:    GetDistroName(),
 	}
 
 	// Flatpaks
@@ -67,15 +75,23 @@ func CreateLightBackupWithOptions(opts LightBackupOptions) (*LightBackup, error)
 		}
 	}
 
-	// RPM packages
-	if opts.RPM && utils.CommandExists("dnf") {
-		result := utils.RunCommand("dnf", "repoquery", "--userinstalled", "--qf", "%{name}")
-		if result.Error == nil {
-			for _, line := range splitLines(result.Stdout) {
-				if line != "" && !isBasePackage(line) {
-					backup.RPMPackages = append(backup.RPMPackages, line)
+	// System packages - auto-detect package manager
+	if opts.RPM {
+		pm := DetectPackageManager()
+		switch pm {
+		case PMDNF:
+			result := utils.RunCommand("dnf", "repoquery", "--userinstalled", "--qf", "%{name}")
+			if result.Error == nil {
+				for _, line := range splitLines(result.Stdout) {
+					if line != "" && !isBasePackage(line) {
+						backup.RPMPackages = append(backup.RPMPackages, line)
+					}
 				}
 			}
+		case PMAPT:
+			apt := NewAPTBackup()
+			pkgs, _ := apt.ListUserInstalled()
+			backup.APTPackages = pkgs
 		}
 	}
 
@@ -175,6 +191,7 @@ func (b *LightBackup) Stats() map[string]int {
 	return map[string]int{
 		"flatpaks":   len(b.Flatpaks),
 		"rpm":        len(b.RPMPackages),
+		"apt":        len(b.APTPackages),
 		"extensions": len(b.GnomeExtensions),
 		"repos":      len(b.Repos),
 	}

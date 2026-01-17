@@ -40,8 +40,10 @@ func NewFullSaveView() FullSaveView {
 		{ID: "flatpaks", Title: "Flatpak Apps", Description: "All installed Flatpak applications", Checked: true},
 		{ID: "rpm", Title: "RPM Packages", Description: "User-installed system packages", Checked: true},
 		{ID: "repos", Title: "Repositories", Description: "Third-party DNF repos", Checked: true},
-		{ID: "extensions", Title: "GNOME Extensions", Description: "Shell extensions and their settings", Checked: true},
-		{ID: "settings", Title: "GNOME Settings", Description: "Desktop customizations (dconf)", Checked: true},
+		{ID: "extensions", Title: "GNOME Extensions", Description: "Shell extensions and settings", Checked: backup.IsGNOME()},
+		{ID: "settings", Title: "GNOME Settings", Description: "Desktop customizations (dconf)", Checked: backup.IsGNOME()},
+		{ID: "kde_config", Title: "KDE Plasma Config", Description: "Plasma, KWin, shortcuts", Checked: backup.IsKDE()},
+		{ID: "kde_data", Title: "KDE Themes/Widgets", Description: "Plasma themes, widgets, colors", Checked: backup.IsKDE()},
 		{ID: "dotfiles", Title: "Dotfiles", Description: ".bashrc, .zshrc, .gitconfig, etc.", Checked: true},
 		{ID: "fonts", Title: "User Fonts", Description: "~/.local/share/fonts", Checked: true},
 		{ID: "ssh", Title: "SSH Config", Description: "~/.ssh/config (no keys)", Checked: true},
@@ -111,6 +113,10 @@ func (v FullSaveView) getOptions() backup.FullBackupOptions {
 			opts.Extensions = true
 		case "settings":
 			opts.Settings = true
+		case "kde_config":
+			opts.KDEConfig = true
+		case "kde_data":
+			opts.KDEData = true
 		case "dotfiles":
 			opts.Dotfiles = true
 		case "fonts":

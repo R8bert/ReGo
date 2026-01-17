@@ -20,6 +20,8 @@ type FullBackupOptions struct {
 	Repos       bool
 	Extensions  bool
 	Settings    bool
+	KDEConfig   bool // KDE Plasma config files
+	KDEData     bool // KDE themes, widgets, colors
 	Dotfiles    bool
 	Fonts       bool
 	SSHConfig   bool
@@ -84,6 +86,26 @@ func CreateFullBackup(opts FullBackupOptions, outputPath string) (map[string]int
 				stats["settings"] = 1
 			}
 			stats["repos"] = len(lightBackup.Repos)
+		}
+	}
+
+	// KDE Plasma Config
+	if opts.KDEConfig {
+		kde := NewKDEBackup()
+		count, _ := kde.BackupConfigs(tmpDir)
+		stats["kde_config"] = count
+		if count > 0 {
+			included = append(included, "kde_config")
+		}
+	}
+
+	// KDE Themes/Widgets/Colors
+	if opts.KDEData {
+		kde := NewKDEBackup()
+		count, _ := kde.BackupData(tmpDir)
+		stats["kde_data"] = count
+		if count > 0 {
+			included = append(included, "kde_data")
 		}
 	}
 
