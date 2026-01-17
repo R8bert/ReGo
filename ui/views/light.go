@@ -254,18 +254,29 @@ func (v LightBackupView) View() string {
 
 // LightRestoreView for restoring from a light backup
 type LightRestoreView struct {
-	phase   int
-	frame   int
-	path    string
-	backup  *backup.LightBackup
-	dryRun  bool
-	results string
-	error   error
+	phase       int // 0=file select, 1=confirm, 2=running, 3=done
+	frame       int
+	path        string
+	backup      *backup.LightBackup
+	dryRun      bool
+	results     string
+	error       error
+	currentStep string
+	progress    int
+	total       int
+	logs        []string
 }
 
 type lightRestoreDoneMsg struct {
 	results string
 	err     error
+}
+
+type restoreProgressMsg struct {
+	step    string
+	current int
+	total   int
+	log     string
 }
 
 func NewLightRestoreView() LightRestoreView {
@@ -278,9 +289,20 @@ func (v LightRestoreView) Update(msg tea.Msg) (LightRestoreView, tea.Cmd, string
 	switch msg := msg.(type) {
 	case components.TickMsg:
 		v.frame++
+		if v.phase == 2 {
+			return v, components.Tick(), ""
+		}
 		return v, components.Tick(), ""
+	case restoreProgressMsg:
+		v.currentStep = msg.step
+		v.progress = msg.current
+		v.total = msg.total
+		if msg.log != "" {
+			v.logs = append(v.logs, msg.log)
+		}
+		return v, nil, ""
 	case lightRestoreDoneMsg:
-		v.phase = 2
+		v.phase = 3
 		v.results = msg.results
 		v.error = msg.err
 		return v, nil, ""
@@ -304,12 +326,14 @@ func (v LightRestoreView) Update(msg tea.Msg) (LightRestoreView, tea.Cmd, string
 			case "d":
 				v.dryRun = !v.dryRun
 			case "enter":
+				v.phase = 2
+				v.logs = []string{}
 				return v, v.runRestore(), ""
 			case "esc":
 				v.phase = 0
 				v.error = nil
 			}
-		case 2:
+		case 3:
 			return v, nil, "back"
 		}
 	}
@@ -442,7 +466,43 @@ func (v LightRestoreView) View() string {
 		}
 		s += "\n" + styles.DimStyle.Render("d: Toggle mode • Enter: Restore • Esc: Back")
 	case 2:
-		s += v.results + "\n\n" + styles.DimStyle.Render("Press any key")
+		// Running phase - show progress
+		spinner := []string{"◐", "◓", "◑", "◒"}[v.frame/2%4]
+		s += styles.WarningStyle.Render(spinner+" Installing...") + "\n\n"
+
+		if v.currentStep != "" {
+			s += styles.NormalStyle.Render("Current: ") + styles.SelectedStyle.Render(v.currentStep) + "\n"
+		}
+
+		// Progress bar
+		if v.total > 0 {
+			pct := float64(v.progress) / float64(v.total)
+			barWidth := 30
+			filled := int(pct * float64(barWidth))
+			bar := ""
+			for i := 0; i < barWidth; i++ {
+				if i < filled {
+					bar += "█"
+				} else {
+					bar += "░"
+				}
+			}
+			s += fmt.Sprintf("\n[%s] %d/%d\n", styles.SuccessStyle.Render(bar), v.progress, v.total)
+		}
+
+		// Recent logs
+		if len(v.logs) > 0 {
+			s += "\n" + styles.DimStyle.Render("Log:") + "\n"
+			start := 0
+			if len(v.logs) > 5 {
+				start = len(v.logs) - 5
+			}
+			for _, log := range v.logs[start:] {
+				s += styles.DimStyle.Render("  "+log) + "\n"
+			}
+		}
+	case 3:
+		s += v.results + "\n\n" + styles.DimStyle.Render("Press any key to continue")
 	}
 	return s
 }
