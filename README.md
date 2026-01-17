@@ -183,10 +183,4 @@ ReGo stores its configuration and temporary files in the user's home directory. 
 
 Contributions are welcome. Please submit issues and pull requests to the GitHub repository.
 
-## License
 
-MIT License. See LICENSE file for details.
-
-## Author
-
-r8bert
