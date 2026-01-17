@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/r8bert/rego/internal/backup"
+	"github.com/r8bert/rego/internal/utils"
 	"github.com/r8bert/rego/ui/components"
 	"github.com/r8bert/rego/ui/styles"
 )
@@ -317,10 +318,89 @@ func (v LightRestoreView) Update(msg tea.Msg) (LightRestoreView, tea.Cmd, string
 
 func (v LightRestoreView) runRestore() tea.Cmd {
 	return func() tea.Msg {
-		result := fmt.Sprintf("Would install:\n• %d Flatpaks\n• %d RPM packages\n• %d Extensions",
-			len(v.backup.Flatpaks), len(v.backup.RPMPackages), len(v.backup.GnomeExtensions))
-		return lightRestoreDoneMsg{results: result}
+		var results []string
+
+		if v.dryRun {
+			// Just show what would be done
+			if len(v.backup.Flatpaks) > 0 {
+				results = append(results, fmt.Sprintf("[DRY RUN] Would install %d Flatpaks", len(v.backup.Flatpaks)))
+			}
+			if len(v.backup.RPMPackages) > 0 {
+				results = append(results, fmt.Sprintf("[DRY RUN] Would install %d RPM packages", len(v.backup.RPMPackages)))
+			}
+			if len(v.backup.APTPackages) > 0 {
+				results = append(results, fmt.Sprintf("[DRY RUN] Would install %d APT packages", len(v.backup.APTPackages)))
+			}
+			if len(v.backup.GnomeExtensions) > 0 {
+				results = append(results, fmt.Sprintf("[DRY RUN] Would restore %d GNOME extensions", len(v.backup.GnomeExtensions)))
+			}
+			if v.backup.DconfSettings != "" {
+				results = append(results, "[DRY RUN] Would restore dconf settings")
+			}
+			return lightRestoreDoneMsg{results: "Dry run complete:\n" + joinLines(results)}
+		}
+
+		// Actually perform restore
+
+		// 1. Flatpaks
+		if len(v.backup.Flatpaks) > 0 {
+			for _, app := range v.backup.Flatpaks {
+				utils.RunCommand("flatpak", "install", "-y", "flathub", app)
+			}
+			results = append(results, fmt.Sprintf("Installed %d Flatpaks", len(v.backup.Flatpaks)))
+		}
+
+		// 2. System packages (RPM/APT)
+		pm := backup.DetectPackageManager()
+		switch pm {
+		case backup.PMDNF:
+			if len(v.backup.RPMPackages) > 0 {
+				args := append([]string{"install", "-y"}, v.backup.RPMPackages...)
+				utils.RunCommand("sudo", append([]string{"dnf"}, args...)...)
+				results = append(results, fmt.Sprintf("Installed %d RPM packages", len(v.backup.RPMPackages)))
+			}
+		case backup.PMAPT:
+			if len(v.backup.APTPackages) > 0 {
+				args := append([]string{"install", "-y"}, v.backup.APTPackages...)
+				utils.RunCommand("sudo", append([]string{"apt"}, args...)...)
+				results = append(results, fmt.Sprintf("Installed %d APT packages", len(v.backup.APTPackages)))
+			}
+		}
+
+		// 3. GNOME Extensions
+		if len(v.backup.GnomeExtensions) > 0 {
+			for _, ext := range v.backup.GnomeExtensions {
+				utils.RunCommand("gnome-extensions", "enable", ext)
+			}
+			results = append(results, fmt.Sprintf("Enabled %d GNOME extensions", len(v.backup.GnomeExtensions)))
+		}
+
+		// 4. Dconf settings
+		if v.backup.DconfSettings != "" {
+			// Write to temp file and load
+			tmpFile := "/tmp/rego-dconf-restore.txt"
+			os.WriteFile(tmpFile, []byte(v.backup.DconfSettings), 0644)
+			utils.RunCommand("dconf", "load", "/")
+			os.Remove(tmpFile)
+			results = append(results, "Restored dconf settings")
+		}
+
+		if len(results) == 0 {
+			return lightRestoreDoneMsg{results: "Nothing to restore"}
+		}
+		return lightRestoreDoneMsg{results: "Restore complete:\n" + joinLines(results)}
 	}
+}
+
+func joinLines(lines []string) string {
+	result := ""
+	for i, line := range lines {
+		result += "  • " + line
+		if i < len(lines)-1 {
+			result += "\n"
+		}
+	}
+	return result
 }
 
 func (v LightRestoreView) View() string {
@@ -341,11 +421,25 @@ func (v LightRestoreView) View() string {
 			mode = styles.WarningStyle.Render("[LIVE]")
 		}
 		s += "Mode: " + mode + "\n\n"
-		s += fmt.Sprintf("Backup from: %s (%s)\n\n", v.backup.Hostname, v.backup.CreatedAt.Format("2006-01-02"))
+		s += fmt.Sprintf("Backup from: %s (%s)\n", v.backup.Hostname, v.backup.CreatedAt.Format("2006-01-02"))
+		if v.backup.Distro != "" {
+			s += fmt.Sprintf("Distro: %s\n\n", v.backup.Distro)
+		} else {
+			s += "\n"
+		}
 		stats := v.backup.Stats()
-		s += fmt.Sprintf("   • %d Flatpaks\n", stats["flatpaks"])
-		s += fmt.Sprintf("   • %d RPM packages\n", stats["rpm"])
-		s += fmt.Sprintf("   • %d Extensions\n", stats["extensions"])
+		if stats["flatpaks"] > 0 {
+			s += fmt.Sprintf("   • %d Flatpaks\n", stats["flatpaks"])
+		}
+		if stats["rpm"] > 0 {
+			s += fmt.Sprintf("   • %d RPM packages\n", stats["rpm"])
+		}
+		if stats["apt"] > 0 {
+			s += fmt.Sprintf("   • %d APT packages\n", stats["apt"])
+		}
+		if stats["extensions"] > 0 {
+			s += fmt.Sprintf("   • %d GNOME extensions\n", stats["extensions"])
+		}
 		s += "\n" + styles.DimStyle.Render("d: Toggle mode • Enter: Restore • Esc: Back")
 	case 2:
 		s += v.results + "\n\n" + styles.DimStyle.Render("Press any key")
