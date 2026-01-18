@@ -12,7 +12,9 @@ const (
 	ViewMainMenu View = iota
 	ViewQuickSave
 	ViewFullSave
-	ViewLoad
+	ViewLoadMenu
+	ViewLoadQuick
+	ViewLoadFull
 	ViewAbout
 )
 
@@ -23,7 +25,9 @@ type Model struct {
 	mainMenu    views.MainMenuView
 	quickSave   views.LightBackupView
 	fullSave    views.FullSaveView
-	load        views.LightRestoreView
+	loadMenu    views.LoadMenuView
+	loadQuick   views.LightRestoreView
+	loadFull    views.RestoreView
 	about       views.AboutView
 }
 
@@ -67,8 +71,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.fullSave = views.NewFullSaveView()
 			m.currentView = ViewFullSave
 		case "load":
-			m.load = views.NewLightRestoreView()
-			m.currentView = ViewLoad
+			m.loadMenu = views.NewLoadMenuView()
+			m.currentView = ViewLoadMenu
 		case "about":
 			m.currentView = ViewAbout
 		case "quit":
@@ -84,10 +88,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if nav == "back" {
 			m.currentView = ViewMainMenu
 		}
-	case ViewLoad:
-		m.load, cmd, nav = m.load.Update(msg)
-		if nav == "back" {
+	case ViewLoadMenu:
+		m.loadMenu, cmd, nav = m.loadMenu.Update(msg)
+		switch nav {
+		case "back":
 			m.currentView = ViewMainMenu
+		case "load_quick":
+			m.loadQuick = views.NewLightRestoreView()
+			m.currentView = ViewLoadQuick
+		case "load_full":
+			m.loadFull = views.NewRestoreView()
+			m.currentView = ViewLoadFull
+		}
+	case ViewLoadQuick:
+		m.loadQuick, cmd, nav = m.loadQuick.Update(msg)
+		if nav == "back" {
+			m.currentView = ViewLoadMenu
+		}
+	case ViewLoadFull:
+		m.loadFull, cmd, nav = m.loadFull.Update(msg)
+		if nav == "back" {
+			m.currentView = ViewLoadMenu
 		}
 	case ViewAbout:
 		m.about, cmd, nav = m.about.Update(msg)
@@ -107,8 +128,12 @@ func (m Model) View() string {
 		content = m.quickSave.View()
 	case ViewFullSave:
 		content = m.fullSave.View()
-	case ViewLoad:
-		content = m.load.View()
+	case ViewLoadMenu:
+		content = m.loadMenu.View()
+	case ViewLoadQuick:
+		content = m.loadQuick.View()
+	case ViewLoadFull:
+		content = m.loadFull.View()
 	case ViewAbout:
 		content = m.about.View()
 	default:

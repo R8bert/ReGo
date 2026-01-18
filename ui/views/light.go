@@ -255,11 +255,13 @@ func (v LightBackupView) View() string {
 
 // LightRestoreView for restoring from a light backup
 type LightRestoreView struct {
-	phase        int // 0=file select, 1=checking, 2=confirm, 3=done
+	phase        int // 0=file select, 1=checking, 2=select items, 3=running, 4=done
 	frame        int
 	path         string
 	backup       *backup.LightBackup
 	restoreCheck *backup.RestoreCheck
+	checkboxes   *components.CheckboxList
+	selections   map[string]bool
 	checkStatus  string
 	results      string
 	error        error
@@ -287,10 +289,46 @@ func (v LightRestoreView) Update(msg tea.Msg) (LightRestoreView, tea.Cmd, string
 		return v, components.Tick(), ""
 	case checkDoneMsg:
 		v.restoreCheck = msg.check
+		// Build checkboxes based on what needs to be restored
+		var items []components.CheckboxItem
+		c := msg.check
+		if len(c.FlatpaksToInstall) > 0 {
+			items = append(items, components.CheckboxItem{
+				ID: "flatpaks", Title: fmt.Sprintf("Flatpaks (%d to install)", len(c.FlatpaksToInstall)),
+				Description: fmt.Sprintf("%d already installed", c.FlatpaksSkipped), Checked: true,
+			})
+		}
+		if len(c.RPMToInstall) > 0 {
+			items = append(items, components.CheckboxItem{
+				ID: "rpm", Title: fmt.Sprintf("RPM Packages (%d to install)", len(c.RPMToInstall)),
+				Description: fmt.Sprintf("%d already installed [sudo]", c.RPMSkipped), Checked: true,
+			})
+		}
+		if len(c.APTToInstall) > 0 {
+			items = append(items, components.CheckboxItem{
+				ID: "apt", Title: fmt.Sprintf("APT Packages (%d to install)", len(c.APTToInstall)),
+				Description: fmt.Sprintf("%d already installed [sudo]", c.APTSkipped), Checked: true,
+			})
+		}
+		if len(c.ExtensionsToEnable) > 0 {
+			items = append(items, components.CheckboxItem{
+				ID: "extensions", Title: fmt.Sprintf("GNOME Extensions (%d to enable)", len(c.ExtensionsToEnable)),
+				Description: fmt.Sprintf("%d already enabled", c.ExtensionsSkipped), Checked: true,
+			})
+		}
+		if c.HasDconfSettings {
+			items = append(items, components.CheckboxItem{
+				ID: "dconf", Title: "Dconf Settings",
+				Description: "Desktop customizations", Checked: true,
+			})
+		}
+		if len(items) > 0 {
+			v.checkboxes = components.NewCheckboxList(items)
+		}
 		v.phase = 2
 		return v, nil, ""
 	case lightRestoreDoneMsg:
-		v.phase = 3
+		v.phase = 4
 		v.results = msg.results
 		v.error = msg.err
 		return v, nil, ""
@@ -312,14 +350,58 @@ func (v LightRestoreView) Update(msg tea.Msg) (LightRestoreView, tea.Cmd, string
 				return v, nil, "back"
 			}
 		case 2:
+			// Selection phase with checkboxes
 			switch msg.String() {
+			case "up", "k":
+				if v.checkboxes != nil {
+					v.checkboxes.Up()
+				}
+			case "down", "j":
+				if v.checkboxes != nil {
+					v.checkboxes.Down()
+				}
+			case " ":
+				if v.checkboxes != nil {
+					v.checkboxes.Toggle()
+				}
+			case "a":
+				if v.checkboxes != nil {
+					v.checkboxes.ToggleAll()
+				}
 			case "enter":
-				return v, v.runRestore(), ""
+				// Store selections and start restore
+				v.selections = make(map[string]bool)
+				if v.checkboxes != nil {
+					for _, item := range v.checkboxes.GetSelected() {
+						v.selections[item.ID] = true
+					}
+				}
+				// If nothing selected or no checkboxes (everything already installed)
+				if len(v.selections) == 0 && v.checkboxes == nil {
+					v.phase = 4
+					v.results = "Nothing to restore - everything is already installed!"
+					return v, nil, ""
+				}
+				if len(v.selections) == 0 {
+					return v, nil, "" // Nothing selected, don't proceed
+				}
+				v.phase = 3
+
+				// Check if we need sudo (RPM or APT selected)
+				needsSudo := (v.selections["rpm"] && len(v.restoreCheck.RPMToInstall) > 0) ||
+					(v.selections["apt"] && len(v.restoreCheck.APTToInstall) > 0)
+
+				if needsSudo {
+					// Use tea.ExecProcess to release terminal for sudo password
+					return v, v.runRestoreWithSudo(), ""
+				}
+				return v, v.runRestoreNoSudo(), ""
 			case "esc":
 				v.phase = 0
 				v.error = nil
+				v.checkboxes = nil
 			}
-		case 3:
+		case 4:
 			return v, nil, "back"
 		}
 	}
@@ -333,13 +415,14 @@ func (v LightRestoreView) runCheck() tea.Cmd {
 	}
 }
 
-func (v LightRestoreView) runRestore() tea.Cmd {
+// runRestoreNoSudo handles restore operations that don't need sudo
+func (v LightRestoreView) runRestoreNoSudo() tea.Cmd {
 	return func() tea.Msg {
 		var results []string
 		c := v.restoreCheck
 
-		// 1. Flatpaks - only install missing ones
-		if len(c.FlatpaksToInstall) > 0 {
+		// 1. Flatpaks
+		if v.selections["flatpaks"] && len(c.FlatpaksToInstall) > 0 {
 			for _, app := range c.FlatpaksToInstall {
 				cmd := exec.Command("flatpak", "install", "-y", "flathub", app)
 				cmd.Stdout = os.Stdout
@@ -349,37 +432,16 @@ func (v LightRestoreView) runRestore() tea.Cmd {
 			results = append(results, fmt.Sprintf("Installed %d Flatpaks", len(c.FlatpaksToInstall)))
 		}
 
-		// 2. System packages (RPM/APT) - only install missing ones
-		if len(c.RPMToInstall) > 0 {
-			args := append([]string{"dnf", "install", "-y"}, c.RPMToInstall...)
-			cmd := exec.Command("sudo", args...)
-			cmd.Stdin = os.Stdin
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			cmd.Run()
-			results = append(results, fmt.Sprintf("Installed %d RPM packages", len(c.RPMToInstall)))
-		}
-
-		if len(c.APTToInstall) > 0 {
-			args := append([]string{"apt", "install", "-y"}, c.APTToInstall...)
-			cmd := exec.Command("sudo", args...)
-			cmd.Stdin = os.Stdin
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			cmd.Run()
-			results = append(results, fmt.Sprintf("Installed %d APT packages", len(c.APTToInstall)))
-		}
-
-		// 3. GNOME Extensions - only enable missing ones
-		if len(c.ExtensionsToEnable) > 0 {
+		// 2. GNOME Extensions
+		if v.selections["extensions"] && len(c.ExtensionsToEnable) > 0 {
 			for _, ext := range c.ExtensionsToEnable {
 				exec.Command("gnome-extensions", "enable", ext).Run()
 			}
 			results = append(results, fmt.Sprintf("Enabled %d GNOME extensions", len(c.ExtensionsToEnable)))
 		}
 
-		// 4. Dconf settings
-		if c.HasDconfSettings && v.backup.DconfSettings != "" {
+		// 3. Dconf settings
+		if v.selections["dconf"] && c.HasDconfSettings && v.backup.DconfSettings != "" {
 			cmd := exec.Command("dconf", "load", "/")
 			cmd.Stdin = strings.NewReader(v.backup.DconfSettings)
 			cmd.Run()
@@ -387,10 +449,66 @@ func (v LightRestoreView) runRestore() tea.Cmd {
 		}
 
 		if len(results) == 0 {
-			return lightRestoreDoneMsg{results: "Nothing to restore - everything is already installed!"}
+			return lightRestoreDoneMsg{results: "Nothing was restored"}
 		}
 		return lightRestoreDoneMsg{results: "Restore complete:\n" + joinLines(results)}
 	}
+}
+
+// runRestoreWithSudo handles restore using tea.ExecProcess for sudo password
+func (v LightRestoreView) runRestoreWithSudo() tea.Cmd {
+	c := v.restoreCheck
+
+	// Build a shell script to run all restore operations
+	var script string
+	script += "#!/bin/bash\n"
+	script += "set -e\n"
+	script += "echo '=== ReGo Restore ==='\n"
+
+	// Flatpaks (no sudo)
+	if v.selections["flatpaks"] && len(c.FlatpaksToInstall) > 0 {
+		for _, app := range c.FlatpaksToInstall {
+			script += fmt.Sprintf("flatpak install -y flathub %s\n", app)
+		}
+	}
+
+	// RPM packages (with sudo)
+	if v.selections["rpm"] && len(c.RPMToInstall) > 0 {
+		script += "sudo dnf install -y"
+		for _, pkg := range c.RPMToInstall {
+			script += " " + pkg
+		}
+		script += "\n"
+	}
+
+	// APT packages (with sudo)
+	if v.selections["apt"] && len(c.APTToInstall) > 0 {
+		script += "sudo apt install -y"
+		for _, pkg := range c.APTToInstall {
+			script += " " + pkg
+		}
+		script += "\n"
+	}
+
+	// GNOME extensions (no sudo)
+	if v.selections["extensions"] && len(c.ExtensionsToEnable) > 0 {
+		for _, ext := range c.ExtensionsToEnable {
+			script += fmt.Sprintf("gnome-extensions enable %s 2>/dev/null || true\n", ext)
+		}
+	}
+
+	script += "echo ''\n"
+	script += "echo '=== Restore Complete! Press Enter to continue ==='\n"
+	script += "read\n"
+
+	// Use tea.ExecProcess to run bash with the script
+	cmd := exec.Command("bash", "-c", script)
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		if err != nil {
+			return lightRestoreDoneMsg{results: "Restore completed with some errors", err: err}
+		}
+		return lightRestoreDoneMsg{results: "Restore complete!"}
+	})
 }
 
 func joinLines(lines []string) string {
@@ -449,7 +567,7 @@ func (v LightRestoreView) View() string {
 		content += styles.DimStyle.Render("   ◦ Extensions" + dots)
 
 	case 2:
-		// Confirm phase
+		// Selection phase - show checkboxes
 		content = styles.SuccessStyle.Render("✓ Verification complete") + "\n\n"
 
 		// Backup info box
@@ -462,51 +580,29 @@ func (v LightRestoreView) View() string {
 		}
 		content += styles.CardStyle.Render(strings.Join(infoLines, "\n")) + "\n\n"
 
-		// What will be installed
-		content += styles.NormalStyle.Render("Packages to install:") + "\n\n"
-		c := v.restoreCheck
-
-		if len(c.FlatpaksToInstall) > 0 {
-			line := fmt.Sprintf("   %s %d Flatpaks", styles.SuccessStyle.Render("●"), len(c.FlatpaksToInstall))
-			if c.FlatpaksSkipped > 0 {
-				line += styles.DimStyle.Render(fmt.Sprintf(" (%d skipped)", c.FlatpaksSkipped))
+		// Show checkboxes or "everything installed" message
+		if v.checkboxes != nil {
+			content += styles.NormalStyle.Render("Select what to restore:") + "\n\n"
+			content += v.checkboxes.View() + "\n"
+			// Show sudo warning if RPM/APT packages selected
+			c := v.restoreCheck
+			if len(c.RPMToInstall) > 0 || len(c.APTToInstall) > 0 {
+				content += styles.WarningStyle.Render("⚠ Package installation requires sudo") + "\n"
+				content += styles.DimStyle.Render("  If password fails, run: sudo rego") + "\n\n"
 			}
-			content += line + "\n"
+			content += styles.DimStyle.Render("Space: Toggle • a: All • Enter: Restore • Esc: Cancel")
+		} else {
+			content += styles.SuccessStyle.Render("   ✓ Everything is already installed!") + "\n\n"
+			content += styles.DimStyle.Render("[Enter] Continue  [Esc] Back")
 		}
-		if len(c.RPMToInstall) > 0 {
-			line := fmt.Sprintf("   %s %d RPM packages", styles.WarningStyle.Render("●"), len(c.RPMToInstall))
-			if c.RPMSkipped > 0 {
-				line += styles.DimStyle.Render(fmt.Sprintf(" (%d skipped)", c.RPMSkipped))
-			}
-			content += line + " " + styles.DimStyle.Render("[sudo]") + "\n"
-		}
-		if len(c.APTToInstall) > 0 {
-			line := fmt.Sprintf("   %s %d APT packages", styles.WarningStyle.Render("●"), len(c.APTToInstall))
-			if c.APTSkipped > 0 {
-				line += styles.DimStyle.Render(fmt.Sprintf(" (%d skipped)", c.APTSkipped))
-			}
-			content += line + " " + styles.DimStyle.Render("[sudo]") + "\n"
-		}
-		if len(c.ExtensionsToEnable) > 0 {
-			line := fmt.Sprintf("   %s %d GNOME extensions", styles.AccentStyle.Render("●"), len(c.ExtensionsToEnable))
-			if c.ExtensionsSkipped > 0 {
-				line += styles.DimStyle.Render(fmt.Sprintf(" (%d skipped)", c.ExtensionsSkipped))
-			}
-			content += line + "\n"
-		}
-		if c.HasDconfSettings {
-			content += fmt.Sprintf("   %s dconf settings\n", styles.AccentStyle.Render("●"))
-		}
-
-		// Show if nothing to install
-		if len(c.FlatpaksToInstall) == 0 && len(c.RPMToInstall) == 0 &&
-			len(c.APTToInstall) == 0 && len(c.ExtensionsToEnable) == 0 && !c.HasDconfSettings {
-			content += styles.SuccessStyle.Render("   ✓ Everything is already installed!") + "\n"
-		}
-
-		content += "\n" + styles.DimStyle.Render("[Enter] Install  [Esc] Cancel")
 
 	case 3:
+		// Running phase
+		spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}[v.frame%10]
+		content = styles.WarningStyle.Render(spinner+" Restoring...") + "\n\n"
+		content += styles.DimStyle.Render("Please wait, this may take a while...")
+
+	case 4:
 		// Done phase
 		content = styles.CardStyle.Render(v.results) + "\n\n"
 		content += styles.DimStyle.Render("[Any key] Continue")
