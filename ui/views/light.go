@@ -423,15 +423,30 @@ func (v LightRestoreView) View() string {
 
 	case 1:
 		// Checking phase - show verification in progress
-		spinner := []string{"◐", "◓", "◑", "◒"}[v.frame/2%4]
-		content = styles.WarningStyle.Render(spinner+" Verifying installed packages...") + "\n\n"
+		spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}[v.frame%10]
+		content = styles.WarningStyle.Render(spinner+" Scanning installed packages...") + "\n\n"
 
-		checks := []string{
-			styles.DimStyle.Render("   ◦ Scanning Flatpaks..."),
-			styles.DimStyle.Render("   ◦ Scanning system packages..."),
-			styles.DimStyle.Render("   ◦ Scanning GNOME extensions..."),
+		// Progress bar animation
+		barWidth := 24
+		pos := v.frame % (barWidth * 2)
+		if pos >= barWidth {
+			pos = barWidth*2 - pos
 		}
-		content += strings.Join(checks, "\n")
+		bar := ""
+		for i := 0; i < barWidth; i++ {
+			if i >= pos-2 && i <= pos+2 {
+				bar += "█"
+			} else {
+				bar += "░"
+			}
+		}
+		content += "  [" + styles.SuccessStyle.Render(bar) + "]\n\n"
+
+		// Checklist with animated dots
+		dots := []string{"", ".", "..", "..."}[v.frame/3%4]
+		content += styles.DimStyle.Render("   ◦ Flatpaks"+dots) + "\n"
+		content += styles.DimStyle.Render("   ◦ System packages"+dots) + "\n"
+		content += styles.DimStyle.Render("   ◦ Extensions" + dots)
 
 	case 2:
 		// Confirm phase

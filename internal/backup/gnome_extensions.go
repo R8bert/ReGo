@@ -243,14 +243,30 @@ func (g *GnomeExtensionsBackup) Backup(backupDir string) (BackupResult, error) {
 		return result, err
 	}
 
-	extensions, _ := g.listExtensions()
+	allExtensions, _ := g.listExtensions()
 
-	// Get enabled extensions list
+	// Filter to only enabled extensions
+	var extensions []ExtensionInfo
 	var enabledList []string
-	for _, ext := range extensions {
+	for _, ext := range allExtensions {
 		if ext.Enabled {
+			extensions = append(extensions, ext)
 			enabledList = append(enabledList, ext.UUID)
 		}
+	}
+
+	// Update items to only include enabled extensions
+	items = nil
+	for _, ext := range extensions {
+		items = append(items, BackupItem{
+			Name:        ext.UUID,
+			Type:        BackupTypeGnomeExtensions,
+			Description: ext.Name,
+			Metadata: map[string]string{
+				"enabled": boolToString(ext.Enabled),
+				"version": ext.Version,
+			},
+		})
 	}
 
 	data := ExtensionsData{
