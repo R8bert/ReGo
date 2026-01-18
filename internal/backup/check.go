@@ -59,9 +59,9 @@ func GetInstalledAPT() []string {
 	return installed
 }
 
-// GetEnabledGnomeExtensions returns a list of enabled GNOME extension UUIDs
-func GetEnabledGnomeExtensions() []string {
-	cmd := exec.Command("gnome-extensions", "list", "--enabled")
+// GetInstalledGnomeExtensions returns a list of installed GNOME extension UUIDs
+func GetInstalledGnomeExtensions() []string {
+	cmd := exec.Command("gnome-extensions", "list")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil
@@ -133,8 +133,8 @@ func CheckRestore(b *LightBackup) *RestoreCheck {
 
 	// Check GNOME extensions
 	if len(b.GnomeExtensions) > 0 {
-		enabled := GetEnabledGnomeExtensions()
-		check.ExtensionsToEnable = FilterMissing(b.GnomeExtensions, enabled)
+		installed := GetInstalledGnomeExtensions()
+		check.ExtensionsToEnable = FilterMissing(b.GnomeExtensions, installed)
 		check.ExtensionsSkipped = len(b.GnomeExtensions) - len(check.ExtensionsToEnable)
 	}
 
